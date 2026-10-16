@@ -1,0 +1,9 @@
+.DS_Store
+.pixi
+.git*
+*.tar.gz
+
+# And associated executables
+run_container.sh
+run_notebook.sh
+build_docker.sh

@@ -1,0 +1,27 @@
+[workspace]
+authors = ["tdgfrost <100413067+tdgfrost@users.noreply.github.com>"]
+channels = ["conda-forge"]
+name = "radix"
+platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+notebook = "jupyter notebook --ip=0.0.0.0 --port=8888 --no-browser --ServerApp.token='' --ServerApp.password='' --notebook-dir=/experiments"
+
+[dependencies]
+python = "==3.11"
+nushell = ">=0.116.1,<0.117"
+vim = ">=9.2.1054,<10"
+
+[pypi-dependencies]
+numpy = ">=2.4.6, <3"
+matplotlib = ">=3.11.2, <4"
+seaborn = ">=0.13.2, <0.14"
+scipy = ">=1.17.1, <2"
+scikit-learn = ">=1.9.1, <2"
+xgboost = ">=3.2.0, <4"
+pandas = ">=3.0.6, <4"
+polars = ">=2.0.0, <3"
+jupyter = ">=1.1.1, <2"
+ipython = ">=9.17.1, <10"
+marimo = ">=0.25.1, <0.26"
