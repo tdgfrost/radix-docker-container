@@ -25,7 +25,8 @@ RUN groupadd --gid $USER_GID $USERNAME \
 
 # 6. Set the working directory
 WORKDIR /home/$USERNAME/app
-RUN chown -R $USERNAME:$USERNAME /home/$USERNAME/app
+RUN chown -R $USERNAME:$USERNAME /home/$USERNAME \
+    && chmod -R a+rwX /home/$USERNAME
 
 # 7. Switch from root to devuser
 USER $USERNAME

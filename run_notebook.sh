@@ -44,15 +44,22 @@ fi
 HOST_DIR="$HOME/experiments"
 CONTAINER_DIR="/experiments"
 
-if ! docker run --rm --entrypoint bash -v "$HOST_DIR:$CONTAINER_DIR" "$IMAGE_NAME" -c "touch $CONTAINER_DIR/.rw_test && rm $CONTAINER_DIR/.rw_test" 2>/dev/null; then
+if ! docker run --rm --user "$(id -u):$(id -g)" --entrypoint bash -v "$HOST_DIR:$CONTAINER_DIR" "$IMAGE_NAME" -c "touch $CONTAINER_DIR/.rw_test && rm $CONTAINER_DIR/.rw_test" 2>/dev/null; then
     echo "ERROR: The Docker container lacks read/write access to $HOST_DIR."
     echo "To fix this, run the following command on your host machine:"
-    echo "  chmod -R a+rwX $HOST_DIR"
+    echo "  chmod -R u+rwX $HOST_DIR"
     exit 1
 fi
 
 # Start the container in the background and run the notebook
-docker run --rm --replace -d --name radix-notebook -v "$HOST_DIR:/experiments" -p 8888:8888 "$IMAGE_NAME" -c "pixi run notebook"
+# --rm --replace will replace any old containers, and delete the container after it finishes
+# -d detaches the container
+# --name sets a fixed/consistent container name
+# --user will set the user/group id to match the host user, so we preserve read/write access
+# -v virtually mounts the experiments directory within the container
+# -p does the port re-direct, necessary for the jupyter notebook
+
+docker run --rm --replace -d --name radix-notebook --user "$(id -u):$(id -g)" -v "$HOST_DIR:/experiments" -p 8888:8888 "$IMAGE_NAME" -c "pixi run notebook"
 
 # Wait a few seconds for the Jupyter server to initialise
 while ! curl -s http://127.0.0.1:8888 > /dev/null; do
