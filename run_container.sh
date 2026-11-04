@@ -24,9 +24,16 @@ if [ -n "$ARCHIVE_FILE" ]; then
 
     # Load the image if the hash differs OR if the image is not in the local registry
     if [ "$CURRENT_HASH" != "$CACHED_HASH" ] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-        echo "Update detected or image missing. Loading '$ARCHIVE_FILE'..."
-        docker load -i "$ARCHIVE_FILE" || exit 1
-        echo "$CURRENT_HASH" > "$HASH_FILE"
+	echo "Update detected or image missing. Loading '$ARCHIVE_FILE'..."
+
+    	# Remove the old image to free up space (errors are hidden if it doesn't exist yet)
+    	docker rmi -f "$IMAGE_NAME" >/dev/null 2>&1
+
+	# Load the new image
+	docker load -i "$ARCHIVE_FILE" || exit 1
+	docker image prune -f >/dev/null 2>&1
+
+	echo "$CURRENT_HASH" > "$HASH_FILE"
     else
         echo "Archive unchanged. Using existing local image."
     fi
