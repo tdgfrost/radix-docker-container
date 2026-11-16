@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XGBoost Resistance Prediction Dashboard | RADIX ML</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="top-header">
+    <div class="header-main">
+      <div class="brand-badge">RADIX ML</div>
+      <div class="header-titles">
+        <div class="target-caption">Target Label Being Predicted</div>
+        <h1 class="target-label" id="target-label-heading">
+          LABEL_R_TO_RX_DRUG_BLOOD_OR_URINE_ENT_RX_M2D_TO_P7D
+        </h1>
+      </div>
+    </div>
+
+    <div class="header-controls">
+      <div class="control-group">
+        <label for="split-select">Dataset Split</label>
+        <select id="split-select" name="split">
+          <option value="val">Validation Set (X_val / y_val)</option>
+          <option value="test">Test Set (X_test / y_test)</option>
+          <option value="train">Training Set (X_train / y_train)</option>
+        </select>
+      </div>
+      <div class="dataset-meta" id="dataset-meta">
+        <span class="meta-pill" id="meta-rows">Loading split…</span>
+        <span class="meta-pill" id="meta-prevalence">—</span>
+        <span class="meta-pill" id="meta-features">52 features</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="dashboard-container" id="main-content">
+    <!-- Error Banner (hidden unless /experiments files are missing) -->
+    <div class="error-banner hidden" id="error-banner" role="alert">
+      <div class="error-title">Unable to load dataset or model from <code>/experiments</code></div>
+      <div class="error-message" id="error-message"></div>
+    </div>
+
+    <!-- Top Row: Threshold Slider & Patient Sample Outcome -->
+    <div class="top-grid">
+      <!-- Left Card: Classification Threshold & Live Metrics -->
+      <section class="card threshold-card">
+        <div class="card-header">
+          <h2 id="threshold-heading">Classification Threshold Explorer</h2>
+          <span class="norm-badge" id="raw-threshold-pill">
+            Normalised [0–1] (Raw: —)
+          </span>
+        </div>
+
+        <!-- Two Big Text Callouts Above Slider -->
+        <div class="threshold-callouts">
+          <div class="callout-box callout-ppv">
+            <div class="callout-big" id="ppv-big-text">
+              1 in — positives will be true positives
+            </div>
+            <div class="callout-small" id="ppv-small-text">
+              PPV: 0.0000
+            </div>
+            <div class="callout-sub" id="ppv-counts-text">
+              TP: — / Predicted Positives: —
+            </div>
+          </div>
+
+          <div class="callout-box callout-sens">
+            <div class="callout-big" id="sens-big-text">
+              1 in — true cases will be detected
+            </div>
+            <div class="callout-small" id="sens-small-text">
+              Sensitivity: 0.0000
+            </div>
+            <div class="callout-sub" id="sens-counts-text">
+              TP: — / Total True Cases: —
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Slider + Manual 0-1 Input Box with Up/Down Iteration -->
+        <div class="slider-control-row">
+          <div class="slider-track-wrapper">
+            <label for="threshold-slider" class="visually-hidden">
+              Normalised Classification Threshold (0 to 1)
+            </label>
+            <input
+              type="range"
+              id="threshold-slider"
+              name="threshold_slider"
+              min="0"
+              max="1"
+              step="0.001"
+              value="0.500"
+            />
+            <div
+              class="sample-threshold-marker hidden"
+              id="sample-score-marker"
+            >
+              <span class="marker-label" id="sample-marker-label">Patient</span>
+            </div>
+            <div class="slider-scale-labels" aria-hidden="true">
+              <span id="scale-min-label">0.00 (min: —)</span>
+              <span>0.25</span>
+              <span>0.50</span>
+              <span>0.75</span>
+              <span id="scale-max-label">1.00 (max: —)</span>
+            </div>
+          </div>
+
+          <div class="number-input-group">
+            <label for="threshold-number" class="number-caption">Threshold (0–1)</label>
+            <div class="number-stepper">
+              <input
+                type="number"
+                id="threshold-number"
+                name="threshold_number"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.50"
+              />
+              <div class="stepper-buttons">
+                <button
+                  type="button"
+                  id="step-up-btn"
+                  class="stepper-btn"
+                  aria-label="Increase threshold"
+                >▲</button>
+                <button
+                  type="button"
+                  id="step-down-btn"
+                  class="stepper-btn"
+                  aria-label="Decrease threshold"
+                >▼</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Card: Patient Sampling, Prediction Box & Reveal Label Box -->
+      <section class="card patient-card">
+        <div class="card-header">
+          <h2>Patient Sample &amp; Model Decision</h2>
+          <button type="button" id="fresh-sample-btn" class="primary-btn">
+            Get a fresh sample
+          </button>
+        </div>
+
+        <!-- Sample Selector Bar -->
+        <div class="sample-selector-bar">
+          <div class="sample-select-field">
+            <label for="sample-history-select">Selected Sample:</label>
+            <select id="sample-history-select" name="sample_history">
+              <option value="">Click "Get a fresh sample"…</option>
+            </select>
+          </div>
+          <div class="row-jump-field">
+            <label for="row-index-input">Row #:</label>
+            <input
+              type="number"
+              id="row-index-input"
+              name="row_index"
+              min="0"
+              step="1"
+              placeholder="0"
+            />
+            <button type="button" id="load-row-btn" class="secondary-btn">Go</button>
+          </div>
+        </div>
+
+        <!-- Prediction Box + Reveal Label Box -->
+        <div class="outcome-boxes">
+          <!-- Model Prediction Box (Light Red vs Light Green) -->
+          <div class="prediction-box prediction-neutral" id="prediction-box">
+            <div class="box-eyebrow">Model Classification Output</div>
+            <div class="prediction-status" id="prediction-status-text">
+              No sample selected
+            </div>
+            <div class="prediction-scores" id="prediction-scores-text">
+              Normalised score: — &nbsp;|&nbsp; Raw probability: —
+            </div>
+          </div>
+
+          <!-- Reveal Label Box -->
+          <button
+            type="button"
+            class="reveal-box unrevealed"
+            id="reveal-label-box"
+            aria-pressed="false"
+          >
+            <span class="box-eyebrow">Ground Truth Label</span>
+            <span class="reveal-main-text" id="reveal-label-text">Reveal label</span>
+            <span class="reveal-hint" id="reveal-label-hint">Click to reveal true organism resistance</span>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Middle Row: Live Updating AUROC and AUPRC Curves -->
+    <div class="curves-grid">
+      <section class="card curve-card">
+        <div class="card-header">
+          <h2>Live AUROC Curve</h2>
+          <div class="curve-badges">
+            <span class="metric-chip" id="auroc-badge">AUROC: —</span>
+            <span class="coord-chip" id="roc-coord-badge">FPR: —, Sens: —</span>
+          </div>
+        </div>
+        <div class="svg-chart-container">
+          <svg id="roc-svg" viewBox="0 0 460 340" role="img" aria-label="Receiver Operating Characteristic (AUROC) Curve"></svg>
+        </div>
+      </section>
+
+      <section class="card curve-card">
+        <div class="card-header">
+          <h2>Live AUPRC Curve</h2>
+          <div class="curve-badges">
+            <span class="metric-chip" id="auprc-badge">AUPRC: —</span>
+            <span class="coord-chip" id="pr-coord-badge">Sens: —, PPV: —</span>
+          </div>
+        </div>
+        <div class="svg-chart-container">
+          <svg id="pr-svg" viewBox="0 0 460 340" role="img" aria-label="Precision-Recall (AUPRC) Curve"></svg>
+        </div>
+      </section>
+    </div>
+
+    <!-- Bottom Row: Pivoted Sample Values Table & Shapley Waterfall -->
+    <div class="bottom-grid">
+      <!-- Left: Pivoted Feature Table (Columns -> Rows, with "Value" column) -->
+      <section class="card table-card">
+        <div class="card-header">
+          <div>
+            <h2 id="pivoted-inspector-heading">Sample Feature Inspector (Pivoted)</h2>
+            <p class="card-subtitle" id="table-sample-subtitle">
+              All columns pivoted as rows with a single "Value" column
+            </p>
+          </div>
+          <search class="table-controls" aria-label="Filter sample features">
+            <label for="feature-scope-select" class="visually-hidden">Feature Scope</label>
+            <select id="feature-scope-select" name="feature_scope">
+              <option value="model">Model Features (Top 52)</option>
+              <option value="all">All Dataframe Columns</option>
+            </select>
+            <label for="feature-search-input" class="visually-hidden">Filter features by name</label>
+            <input
+              type="search"
+              id="feature-search-input"
+              name="feature_search"
+              placeholder="Filter features…"
+              autocorrect="off"
+              autocapitalize="none"
+              spellcheck="false"
+            />
+          </search>
+        </div>
+
+        <div
+          class="table-scroll-container"
+          tabindex="0"
+          role="region"
+          aria-labelledby="pivoted-table-caption"
+        >
+          <table class="pivoted-table" id="pivoted-table">
+            <caption id="pivoted-table-caption" class="visually-hidden">
+              Selected patient sample features pivoted as rows with their corresponding values
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" class="col-rank">Rank</th>
+                <th scope="col" class="col-feature">Feature / Column</th>
+                <th scope="col" class="col-value">Value</th>
+              </tr>
+            </thead>
+            <tbody id="pivoted-table-body">
+              <tr>
+                <td colspan="3" class="empty-table-msg">
+                  Click "Get a fresh sample" to inspect a patient's feature values.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Right: Shapley Waterfall Plot Generator -->
+      <section class="card shap-card">
+        <div class="card-header">
+          <div>
+            <h2>Shapley Waterfall Explanation</h2>
+            <p class="card-subtitle">
+              Feature-by-feature contribution to this patient's model prediction
+            </p>
+          </div>
+          <button type="button" id="generate-shap-btn" class="accent-btn" disabled>
+            Generate Shapley Waterfall
+          </button>
+        </div>
+
+        <!-- Loading Bar (shown while generating SHAP plot) -->
+        <div class="shap-loading-container hidden" id="shap-loading-container">
+          <div class="loading-header">
+            <label for="shap-progress-bar" id="shap-loading-text">
+              Generating Shapley waterfall plot for sample…
+            </label>
+            <span id="shap-loading-percent">0%</span>
+          </div>
+          <progress id="shap-progress-bar" class="shap-progress" max="100" value="0">0%</progress>
+        </div>
+
+        <!-- Waterfall Plot Display Area -->
+        <div class="shap-output-area" id="shap-output-area">
+          <div class="shap-placeholder" id="shap-placeholder">
+            Select a sample and click <strong>"Generate Shapley Waterfall"</strong> to compute and display its Shapley waterfall plot.
+          </div>
+          <figure class="shap-result hidden" id="shap-result">
+            <img id="shap-waterfall-img" alt="Shapley waterfall plot showing top feature contributions for the selected sample" />
+          </figure>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

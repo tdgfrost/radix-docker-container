@@ -2,8 +2,11 @@
 .pixi
 .git*
 *.tar.gz
+dashboard
 
 # And associated executables
 run_container.sh
 run_notebook.sh
+run_dashboard.sh
 build_docker.sh
+build_dashboard.sh

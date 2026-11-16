@@ -205,6 +205,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/f7/a4/4399daaf8f7dfee9d7c3327fdb0426ee041cc63edc358b93911ceb2bfc7a/cffi-2.1.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/f9/33/bd5b9137445ea4b680023eb0469b2bb969d61303dedb2aac6560ff3d14a1/notebook_shim-0.2.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fa/29/accef8eea16670b88f3a23102c35dee62c6f159db30d9628908043b3e21b/jsonpointer-3.2.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/fc/2e/05051341d6b86652292a32f8b413d334aa337f78d58d4099f78a47ff5a60/optuna_integration-5.0.0-py3-none-any.whl
       linux-aarch64:
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/bzip2-1.0.8-h4777abc_10.conda
@@ -386,6 +387,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/fa/29/accef8eea16670b88f3a23102c35dee62c6f159db30d9628908043b3e21b/jsonpointer-3.2.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fb/94/01009e13b94041599004edf32e56e382c24e570f60f79bab8efe45cfe1eb/charset_normalizer-3.5.2-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
       - pypi: https://files.pythonhosted.org/packages/fc/09/a952ef8a1fe64b8a7bb909b2d3ab614d33cff7fdf646d62c3bd35d84de02/shap-0.51.0-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl
+      - pypi: https://files.pythonhosted.org/packages/fc/2e/05051341d6b86652292a32f8b413d334aa337f78d58d4099f78a47ff5a60/optuna_integration-5.0.0-py3-none-any.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/ca-certificates-2026.7.22-hbd8a1cb_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.11-9_cp311.conda
@@ -553,6 +555,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/f7/58/bccc2861b305abdd1b8663d6130c0b3d7cc22e8d86663edbc8401bfd40d4/scipy-1.17.1-cp311-cp311-macosx_12_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/f9/33/bd5b9137445ea4b680023eb0469b2bb969d61303dedb2aac6560ff3d14a1/notebook_shim-0.2.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fa/29/accef8eea16670b88f3a23102c35dee62c6f159db30d9628908043b3e21b/jsonpointer-3.2.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/fc/2e/05051341d6b86652292a32f8b413d334aa337f78d58d4099f78a47ff5a60/optuna_integration-5.0.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fc/ae/9c41313563a860a69d5c67fb4098ce9b40a09c00b68a177407b7c10950fb/llvmlite-0.50.0-cp311-cp311-macosx_12_0_arm64.whl
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
@@ -4940,6 +4943,51 @@ packages:
   - nbtest-gen ; extra == 'nbtest'
   - nbtest-lab-extension ; extra == 'nbtest'
   requires_python: '>=3.11'
+- pypi: https://files.pythonhosted.org/packages/fc/2e/05051341d6b86652292a32f8b413d334aa337f78d58d4099f78a47ff5a60/optuna_integration-5.0.0-py3-none-any.whl
+  name: optuna-integration
+  version: 5.0.0
+  sha256: 598247471d44553c98665ce96dc7d9e6534bb8b2ef38273197f76bdf916e5e2a
+  requires_dist:
+  - optuna
+  - mlflow ; extra == 'document'
+  - pandas ; extra == 'document'
+  - scikit-learn>=0.24.2 ; extra == 'document'
+  - scipy>=1.9.2 ; python_full_version >= '3.9' and extra == 'document'
+  - sphinx ; extra == 'document'
+  - sphinx-notfound-page ; extra == 'document'
+  - sphinx-rtd-theme ; extra == 'document'
+  - botorch<0.10.0 ; extra == 'botorch'
+  - numpy ; extra == 'catboost'
+  - catboost ; extra == 'catboost'
+  - numpy ; extra == 'cma'
+  - cma ; extra == 'cma'
+  - comet-ml>=3.39.3 ; extra == 'comet'
+  - distributed ; extra == 'dask'
+  - fastai>=2.0.0 ; extra == 'fastai'
+  - fastai>=2.0.0 ; extra == 'fastaiv2'
+  - fastcore<1.12.2 ; extra == 'fastaiv2'
+  - tensorflow>=2.20.0 ; extra == 'keras'
+  - lightgbm ; extra == 'lightgbm'
+  - scikit-learn ; extra == 'lightgbm'
+  - mlflow ; extra == 'mlflow'
+  - gpytorch ; extra == 'pytorch-distributed'
+  - pytorch-ignite ; extra == 'pytorch-ignite'
+  - lightning ; extra == 'pytorch-lightning'
+  - numba>=0.60.0 ; extra == 'shap'
+  - numpy ; extra == 'shap'
+  - shap ; extra == 'shap'
+  - pandas ; extra == 'sklearn'
+  - scikit-learn ; extra == 'sklearn'
+  - scipy ; extra == 'sklearn'
+  - skorch ; extra == 'skorch'
+  - tensorboard ; extra == 'tensorboard'
+  - tensorflow>=2.20.0 ; extra == 'tensorboard'
+  - tensorflow>=2.20.0 ; extra == 'tensorflow'
+  - tensorflow>=2.20.0 ; extra == 'tfkeras'
+  - wandb ; extra == 'wandb'
+  - xgboost ; extra == 'xgboost'
+  - trackio ; python_full_version >= '3.10' and extra == 'trackio'
+  requires_python: '>=3.9'
 - pypi: https://files.pythonhosted.org/packages/fc/ae/9c41313563a860a69d5c67fb4098ce9b40a09c00b68a177407b7c10950fb/llvmlite-0.50.0-cp311-cp311-macosx_12_0_arm64.whl
   name: llvmlite
   version: 0.50.0
