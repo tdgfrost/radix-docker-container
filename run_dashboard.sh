@@ -27,11 +27,17 @@ if [ -n "$ARCHIVE_FILE" ]; then
     if [ "$CURRENT_HASH" != "$CACHED_HASH" ] || ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
         echo "Update detected or image missing. Loading '$ARCHIVE_FILE'..."
 
-        # Remove the old image to free up space (errors are hidden if it doesn't exist yet)
+        # Remove the old image and prune dangling blobs BEFORE loading to maximise free disk space
+        docker rm -f radix-dashboard >/dev/null 2>&1
         docker rmi -f "$IMAGE_NAME" >/dev/null 2>&1
+        docker image prune -f >/dev/null 2>&1
 
-        # Load the new image
-        docker load -i "$ARCHIVE_FILE" || exit 1
+        # Decompress on the fly if .tar.gz so Docker does not duplicate the compressed archive in /var/lib/docker/tmp
+        if echo "$ARCHIVE_FILE" | grep -q '\.gz$'; then
+            gzip -dc "$ARCHIVE_FILE" | docker load || exit 1
+        else
+            docker load -i "$ARCHIVE_FILE" || exit 1
+        fi
         docker image prune -f >/dev/null 2>&1
 
         echo "$CURRENT_HASH" > "$HASH_FILE"
