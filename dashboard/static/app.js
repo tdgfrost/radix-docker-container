@@ -595,6 +595,10 @@
       el.metaRows.textContent = `${data.n_samples.toLocaleString()} samples (${data.x_file})`;
       el.metaPrevalence.textContent = `Resistant: ${data.n_positives.toLocaleString()} (${(data.prevalence * 100).toFixed(1)}%)`;
       el.metaFeatures.textContent = `${data.n_features_model} model features / ${data.n_features_total} total cols`;
+      const modelScopeOpt = el.featureScopeSelect.querySelector('option[value="model"]');
+      if (modelScopeOpt) {
+        modelScopeOpt.textContent = `Model Features (Top ${data.n_features_model})`;
+      }
       el.rowIndexInput.max = String(Math.max(0, data.n_samples - 1));
 
       // Scale min/max labels

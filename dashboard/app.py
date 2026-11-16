@@ -27,7 +27,6 @@ from starlette.staticfiles import StaticFiles
 
 TARGET_LABEL = "LABEL_R_TO_RX_DRUG_BLOOD_OR_URINE_ENT_RX_M2D_TO_P7D"
 DEFAULT_PREFIX = "RadixModel-deid-20261016_1028"
-TOP_K_FEATURES = 52
 GRID_STEPS = 1000  # 1001 points from 0.000 to 1.000
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -91,41 +90,46 @@ class ModelStateManager:
         self.final_features: List[str] = []
         self.split_cache: Dict[str, Dict[str, Any]] = {}
 
+    def _read_ranked_features_metadata(self) -> List[str]:
+        with open(self.metadata_path, "r", encoding="utf-8") as f:
+            raw = json.load(f)
+        if isinstance(raw, list):
+            return [
+                item["feature"] if isinstance(item, dict) and "feature" in item
+                else (item["name"] if isinstance(item, dict) and "name" in item else str(item))
+                for item in raw
+            ]
+        if isinstance(raw, dict):
+            if "ranked_features" in raw and isinstance(raw["ranked_features"], list):
+                return [str(x) for x in raw["ranked_features"]]
+            if "features" in raw and isinstance(raw["features"], list):
+                return [str(x) for x in raw["features"]]
+            return [str(k) for k in raw.keys()]
+        return []
+
     def _load_ranked_features(self) -> List[str]:
         if self.final_features:
             return self.final_features
 
-        if self.metadata_path.exists():
-            with open(self.metadata_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-            if isinstance(raw, list):
-                features = [
-                    item["feature"] if isinstance(item, dict) and "feature" in item
-                    else (item["name"] if isinstance(item, dict) and "name" in item else str(item))
-                    for item in raw
-                ]
-            elif isinstance(raw, dict):
-                if "ranked_features" in raw and isinstance(raw["ranked_features"], list):
-                    features = [str(x) for x in raw["ranked_features"]]
-                elif "features" in raw and isinstance(raw["features"], list):
-                    features = [str(x) for x in raw["features"]]
-                else:
-                    features = [str(k) for k in raw.keys()]
+        booster = self._load_booster()
+        num_model_features = int(booster.num_features())
+
+        if booster.feature_names:
+            self.final_features = list(booster.feature_names)
+            if self.metadata_path.exists():
+                self.ranked_features = self._read_ranked_features_metadata()
             else:
-                features = []
-            self.ranked_features = features
-            self.final_features = features[:TOP_K_FEATURES]
+                self.ranked_features = list(self.final_features)
             return self.final_features
 
-        # Fallback to booster feature names if ranked_features.json is absent
-        booster = self._load_booster()
-        if booster.feature_names:
-            self.ranked_features = list(booster.feature_names)
-            self.final_features = self.ranked_features[:TOP_K_FEATURES]
+        if self.metadata_path.exists():
+            features = self._read_ranked_features_metadata()
+            self.ranked_features = features
+            self.final_features = features[:num_model_features] if num_model_features > 0 else features
             return self.final_features
 
         raise FileNotFoundError(
-            f"Could not find ranked features at {self.metadata_path}"
+            f"Could not infer model features: booster has no feature_names and {self.metadata_path} was not found"
         )
 
     def _load_booster(self) -> xgb.Booster:
@@ -436,7 +440,12 @@ async def api_sample(request: Request) -> JSONResponse:
         n_samples = split_data["n_samples"]
         X_df: pd.DataFrame = split_data["X_df"]
         final_features = state_manager._load_ranked_features()
-        rank_lookup = {feat: idx + 1 for idx, feat in enumerate(final_features)}
+        final_feature_set = set(final_features)
+        ranked_order = [f for f in state_manager.ranked_features if f in final_feature_set]
+        for feat in final_features:
+            if feat not in ranked_order:
+                ranked_order.append(feat)
+        rank_lookup = {feat: idx + 1 for idx, feat in enumerate(ranked_order)}
 
         if row_index_param is not None and row_index_param != "":
             row_idx = int(row_index_param)
@@ -471,10 +480,10 @@ async def api_sample(request: Request) -> JSONResponse:
         row_series = X_df.iloc[row_idx]
         orig_index = X_df.index[row_idx]
 
-        # Build pivoted rows: 52 ranked model features first (in rank order), followed by any additional columns
+        # Build pivoted rows: ranked model features first (in rank order), followed by any additional columns
         pivoted_rows = []
         seen_cols = set()
-        for feat in final_features:
+        for feat in ranked_order:
             if feat in X_df.columns:
                 seen_cols.add(feat)
                 pivoted_rows.append(
