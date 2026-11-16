@@ -232,10 +232,18 @@
       `Normalised threshold ${clamped.toFixed(3)} (raw probability ${tRaw.toFixed(4)}), PPV ${ppv.toFixed(4)}, Sensitivity ${sens.toFixed(4)}`
     );
 
+    function formatOneInX(rate) {
+      const raw = 1.0 / rate;
+      if (raw >= 1.0 && raw <= 2.0) {
+        const rounded = Math.round(raw * 10) / 10;
+        return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+      }
+      return String(Math.max(1, Math.round(raw)));
+    }
+
     // Left big text: "1 in X positives will be true positives" + "PPV: 0.xxxx"
     if (ppv > 0) {
-      const xPpv = Math.max(1, Math.round(1.0 / ppv));
-      el.ppvBigText.textContent = `1 in ${xPpv} positives will be true positives`;
+      el.ppvBigText.textContent = `1 in ${formatOneInX(ppv)} positives will be true positives`;
     } else {
       el.ppvBigText.textContent = `0 positives will be true positives`;
     }
@@ -244,8 +252,7 @@
 
     // Right big text: "1 in X true cases will be detected" + "Sensitivity: 0.xxxx"
     if (sens > 0) {
-      const xSens = Math.max(1, Math.round(1.0 / sens));
-      el.sensBigText.textContent = `1 in ${xSens} true cases will be detected`;
+      el.sensBigText.textContent = `1 in ${formatOneInX(sens)} true cases will be detected`;
     } else {
       el.sensBigText.textContent = `0 true cases will be detected`;
     }
