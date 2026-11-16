@@ -45,6 +45,8 @@
     sampleMarkerLabel: document.getElementById("sample-marker-label"),
 
     freshSampleBtn: document.getElementById("fresh-sample-btn"),
+    freshPositiveBtn: document.getElementById("fresh-positive-btn"),
+    freshNegativeBtn: document.getElementById("fresh-negative-btn"),
     sampleHistorySelect: document.getElementById("sample-history-select"),
     rowIndexInput: document.getElementById("row-index-input"),
     loadRowBtn: document.getElementById("load-row-btn"),
@@ -432,15 +434,20 @@
     }
   }
 
-  async function fetchSample(rowIndex = null) {
+  async function fetchSample(rowIndex = null, targetLabel = null) {
     if (!state.currentSplit) return;
     el.freshSampleBtn.disabled = true;
+    el.freshPositiveBtn.disabled = true;
+    el.freshNegativeBtn.disabled = true;
 
     try {
       const params = new URLSearchParams({ split: state.currentSplit });
       if (rowIndex !== null && rowIndex !== "") {
         params.set("row_index", String(rowIndex));
       } else {
+        if (targetLabel !== null && targetLabel !== undefined) {
+          params.set("label", String(targetLabel));
+        }
         const existingIndices = state.samplesHistory.map((s) => s.row_index).join(",");
         if (existingIndices) {
           params.set("exclude", existingIndices);
@@ -467,6 +474,8 @@
       el.errorMessage.textContent = err.message;
     } finally {
       el.freshSampleBtn.disabled = false;
+      el.freshPositiveBtn.disabled = false;
+      el.freshNegativeBtn.disabled = false;
     }
   }
 
@@ -649,6 +658,14 @@
 
   el.freshSampleBtn.addEventListener("click", () => {
     fetchSample();
+  });
+
+  el.freshPositiveBtn.addEventListener("click", () => {
+    fetchSample(null, 1);
+  });
+
+  el.freshNegativeBtn.addEventListener("click", () => {
+    fetchSample(null, 0);
   });
 
   el.sampleHistorySelect.addEventListener("change", (e) => {

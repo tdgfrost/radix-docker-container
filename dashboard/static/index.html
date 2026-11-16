@@ -145,9 +145,17 @@
       <section class="card patient-card">
         <div class="card-header">
           <h2>Patient Sample &amp; Model Decision</h2>
-          <button type="button" id="fresh-sample-btn" class="primary-btn">
-            Get a fresh sample
-          </button>
+          <div class="sample-actions">
+            <button type="button" id="fresh-sample-btn" class="primary-btn">
+              Get a fresh sample
+            </button>
+            <button type="button" id="fresh-positive-btn" class="secondary-btn sample-pos-btn" title="Sample a random positive (resistant) patient">
+              Fresh positive
+            </button>
+            <button type="button" id="fresh-negative-btn" class="secondary-btn sample-neg-btn" title="Sample a random negative (non-resistant) patient">
+              Fresh negative
+            </button>
+          </div>
         </div>
 
         <!-- Sample Selector Bar -->
@@ -318,7 +326,7 @@
             Select a sample and click <strong>"Generate Shapley Waterfall"</strong> to compute and display its Shapley waterfall plot.
           </div>
           <figure class="shap-result hidden" id="shap-result">
-            <img id="shap-waterfall-img" alt="Shapley waterfall plot showing top feature contributions for the selected sample" />
+            <img id="shap-waterfall-img" alt="Shapley waterfall plot showing all feature contributions for the selected sample" />
           </figure>
         </div>
       </section>

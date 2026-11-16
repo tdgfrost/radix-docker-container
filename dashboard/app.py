@@ -416,6 +416,20 @@ async def api_sample(request: Request) -> JSONResponse:
     requested_split = request.query_params.get("split")
     row_index_param = request.query_params.get("row_index")
     exclude_param = request.query_params.get("exclude", "")
+    label_param = request.query_params.get("label")
+
+    target_label: Optional[int] = None
+    if label_param is not None and label_param != "":
+        normalized_label = label_param.strip().lower()
+        if normalized_label in {"1", "positive", "pos"}:
+            target_label = 1
+        elif normalized_label in {"0", "negative", "neg"}:
+            target_label = 0
+        else:
+            return JSONResponse(
+                {"status": "error", "message": "label query parameter must be 'positive'/'1' or 'negative'/'0'."},
+                status_code=400,
+            )
 
     try:
         split_data = state_manager.get_split_data(requested_split)
@@ -438,11 +452,21 @@ async def api_sample(request: Request) -> JSONResponse:
                     part = part.strip()
                     if part.isdigit():
                         excluded.add(int(part))
-            if len(excluded) < n_samples:
-                candidates = [i for i in range(n_samples) if i not in excluded]
-                row_idx = random.choice(candidates)
+
+            if target_label is not None:
+                y_true = split_data["y_true"]
+                pool = [i for i in range(n_samples) if int(y_true[i]) == target_label]
+                if not pool:
+                    label_name = "positive" if target_label == 1 else "negative"
+                    return JSONResponse(
+                        {"status": "error", "message": f"No {label_name} samples found in {split_data['split']} split."},
+                        status_code=404,
+                    )
             else:
-                row_idx = random.randrange(n_samples)
+                pool = list(range(n_samples))
+
+            candidates = [i for i in pool if i not in excluded]
+            row_idx = random.choice(candidates if candidates else pool)
 
         row_series = X_df.iloc[row_idx]
         orig_index = X_df.index[row_idx]
@@ -540,8 +564,9 @@ async def api_shap(request: Request) -> JSONResponse:
         )
 
         plt.close("all")
-        fig = plt.figure(figsize=(10, 6.5), dpi=160)
-        shap.plots.waterfall(explanation, max_display=15, show=False)
+        fig_height = max(6.5, len(final_features) * 0.35 + 1.5)
+        fig = plt.figure(figsize=(10, fig_height), dpi=160)
+        shap.plots.waterfall(explanation, max_display=len(final_features), show=False)
         fig = plt.gcf()
         fig.suptitle(
             f"Shapley Waterfall — Sample #{row_idx} ({split_data['split'].upper()} set)",
@@ -556,7 +581,7 @@ async def api_shap(request: Request) -> JSONResponse:
 
         b64_png = base64.b64encode(buf.getvalue()).decode("ascii")
 
-        # Also return structured top contributions
+        # Also return structured feature contributions
         order = np.argsort(np.abs(shap_vals))[::-1]
         top_contribs = [
             {
@@ -564,7 +589,7 @@ async def api_shap(request: Request) -> JSONResponse:
                 "value": _format_cell_value(raw_row[final_features[i]]),
                 "shap_value": round(float(shap_vals[i]), 5),
             }
-            for i in order[:15]
+            for i in order
         ]
 
         return JSONResponse(

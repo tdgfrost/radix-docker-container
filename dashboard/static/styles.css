@@ -590,6 +590,39 @@ input[type="range"]:focus-visible {
   background: #cbd5e1;
 }
 
+.primary-btn:disabled,
+.secondary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sample-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sample-pos-btn {
+  background: var(--pred-red-bg);
+  color: var(--pred-red-text);
+  border: 1px solid var(--pred-red-border);
+}
+
+.sample-pos-btn:hover:not(:disabled) {
+  background: #fecaca;
+}
+
+.sample-neg-btn {
+  background: var(--pred-green-bg);
+  color: var(--pred-green-text);
+  border: 1px solid var(--pred-green-border);
+}
+
+.sample-neg-btn:hover:not(:disabled) {
+  background: #bbf7d0;
+}
+
 /* Sample Selector Bar */
 .sample-selector-bar {
   display: flex;
