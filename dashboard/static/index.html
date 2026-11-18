@@ -28,6 +28,7 @@
         </select>
       </div>
       <div class="dataset-meta" id="dataset-meta">
+        <span class="meta-pill" id="meta-models">Loading models…</span>
         <span class="meta-pill" id="meta-rows">Loading split…</span>
         <span class="meta-pill" id="meta-prevalence">—</span>
         <span class="meta-pill" id="meta-features">Loading features…</span>
@@ -184,12 +185,12 @@
         <div class="outcome-boxes">
           <!-- Model Prediction Box (Light Red vs Light Green) -->
           <div class="prediction-box prediction-neutral" id="prediction-box">
-            <div class="box-eyebrow">Model Classification Output</div>
+            <div class="box-eyebrow">Ensemble Classification Output</div>
             <div class="prediction-status" id="prediction-status-text">
               No sample selected
             </div>
             <div class="prediction-scores" id="prediction-scores-text">
-              Normalised score: — &nbsp;|&nbsp; Raw probability: —
+              Normalised score: — &nbsp;|&nbsp; Mean probability: —
             </div>
           </div>
 
@@ -279,14 +280,13 @@
             </caption>
             <thead>
               <tr>
-                <th scope="col" class="col-rank">Rank</th>
                 <th scope="col" class="col-feature">Feature / Column</th>
                 <th scope="col" class="col-value">Value</th>
               </tr>
             </thead>
             <tbody id="pivoted-table-body">
               <tr>
-                <td colspan="3" class="empty-table-msg">
+                <td colspan="2" class="empty-table-msg">
                   Click "Get a fresh sample" to inspect a patient's feature values.
                 </td>
               </tr>
@@ -301,7 +301,7 @@
           <div>
             <h2>Shapley Waterfall Explanation</h2>
             <p class="card-subtitle">
-              Feature-by-feature contribution to this patient's model prediction
+              Ensemble mean feature contributions to this patient's prediction (top 30 shown)
             </p>
           </div>
           <button type="button" id="generate-shap-btn" class="accent-btn" disabled>

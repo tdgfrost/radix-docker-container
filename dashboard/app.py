@@ -1,8 +1,8 @@
 import base64
 import io
-import json
 import os
 import random
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -28,6 +28,7 @@ from starlette.staticfiles import StaticFiles
 TARGET_LABEL = "LABEL_R_TO_RX_DRUG_BLOOD_OR_URINE_ENT_RX_M2D_TO_P7D"
 DEFAULT_PREFIX = "RadixModel-deid-20261016_1028"
 GRID_STEPS = 1000  # 1001 points from 0.000 to 1.000
+MAX_SHAP_DISPLAY = 30
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -74,84 +75,85 @@ def _format_shap_data_value(val: Any) -> Any:
     return str(val)
 
 
+def _natural_model_sort_key(path: Path) -> Tuple[int, str]:
+    """Sort model filenames numerically by trailing index when present."""
+    match = re.search(r"(\d+)$", path.stem)
+    return (int(match.group(1)) if match else -1, path.stem)
+
+
 class ModelStateManager:
-    """Loads and caches the XGBoost model, ranked features, and dataset splits."""
+    """Loads and caches the XGBoost ensemble models, features, and dataset splits."""
 
     def __init__(self, experiments_dir: Path) -> None:
         self.experiments_dir = experiments_dir
         self.data_dir = experiments_dir / "data"
-        self.metadata_path = experiments_dir / "metadata" / "ranked_features.json"
-        self.ubj_path = experiments_dir / "xgb_model.ubj"
-        self.json_path = experiments_dir / "xgb_model.json"
+        self.models_dir = experiments_dir / "models"
 
-        self.booster: Optional[xgb.Booster] = None
-        self.model_path_used: Optional[str] = None
-        self.ranked_features: List[str] = []
+        self.boosters: List[xgb.Booster] = []
+        self.model_paths_used: List[str] = []
         self.final_features: List[str] = []
         self.split_cache: Dict[str, Dict[str, Any]] = {}
 
-    def _read_ranked_features_metadata(self) -> List[str]:
-        with open(self.metadata_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-        if isinstance(raw, list):
-            return [
-                item["feature"] if isinstance(item, dict) and "feature" in item
-                else (item["name"] if isinstance(item, dict) and "name" in item else str(item))
-                for item in raw
-            ]
-        if isinstance(raw, dict):
-            if "ranked_features" in raw and isinstance(raw["ranked_features"], list):
-                return [str(x) for x in raw["ranked_features"]]
-            if "features" in raw and isinstance(raw["features"], list):
-                return [str(x) for x in raw["features"]]
-            return [str(k) for k in raw.keys()]
+    def _discover_model_paths(self) -> List[Path]:
+        """Discover all xgb_model* files in /experiments/models (or fallback /experiments), deduplicated by stem."""
+        for search_dir in (self.models_dir, self.experiments_dir):
+            if not search_dir.exists():
+                continue
+            by_stem: Dict[str, Path] = {}
+            # Process .json before .ubj so .ubj is preferred if both formats exist for the same model
+            for ext in ("json", "ubj"):
+                for p in sorted(search_dir.glob(f"xgb_model*.{ext}")):
+                    if p.is_file():
+                        by_stem[p.stem] = p
+            if by_stem:
+                return sorted(by_stem.values(), key=_natural_model_sort_key)
         return []
 
-    def _load_ranked_features(self) -> List[str]:
+    def _load_boosters(self) -> List[xgb.Booster]:
+        if self.boosters:
+            return self.boosters
+
+        paths = self._discover_model_paths()
+        if not paths:
+            raise FileNotFoundError(
+                f"Could not find any xgb_model*.ubj or xgb_model*.json files in {self.models_dir} or {self.experiments_dir}"
+            )
+
+        loaded_boosters: List[xgb.Booster] = []
+        loaded_paths: List[str] = []
+        for path in paths:
+            booster = xgb.Booster()
+            booster.load_model(str(path))
+            loaded_boosters.append(booster)
+            loaded_paths.append(str(path))
+
+        self.boosters = loaded_boosters
+        self.model_paths_used = loaded_paths
+        return self.boosters
+
+    def _load_model_features(self, X_df: Optional[pd.DataFrame] = None) -> List[str]:
         if self.final_features:
             return self.final_features
 
-        booster = self._load_booster()
-        num_model_features = int(booster.num_features())
+        boosters = self._load_boosters()
+        primary = boosters[0]
 
-        if booster.feature_names:
-            self.final_features = list(booster.feature_names)
-            if self.metadata_path.exists():
-                self.ranked_features = self._read_ranked_features_metadata()
-            else:
-                self.ranked_features = list(self.final_features)
+        if primary.feature_names:
+            self.final_features = list(primary.feature_names)
             return self.final_features
 
-        if self.metadata_path.exists():
-            features = self._read_ranked_features_metadata()
-            self.ranked_features = features
-            self.final_features = features[:num_model_features] if num_model_features > 0 else features
+        if X_df is not None:
+            num_model_features = int(primary.num_features())
+            if num_model_features > 0 and len(X_df.columns) != num_model_features:
+                raise ValueError(
+                    f"Model expects {num_model_features} features, but dataframe has {len(X_df.columns)} columns "
+                    "and booster has no stored feature_names."
+                )
+            self.final_features = [str(col) for col in X_df.columns]
             return self.final_features
 
         raise FileNotFoundError(
-            f"Could not infer model features: booster has no feature_names and {self.metadata_path} was not found"
-        )
-
-    def _load_booster(self) -> xgb.Booster:
-        if self.booster is not None:
-            return self.booster
-
-        candidates = [
-            self.ubj_path,
-            self.json_path,
-            self.experiments_dir / "models" / "xgb_model.ubj",
-            self.experiments_dir / "models" / "xgb_model.json",
-        ]
-        for path in candidates:
-            if path.exists():
-                booster = xgb.Booster()
-                booster.load_model(str(path))
-                self.booster = booster
-                self.model_path_used = str(path)
-                return booster
-
-        raise FileNotFoundError(
-            f"Could not find xgb_model.ubj or xgb_model.json in {self.experiments_dir}"
+            "Could not infer model features: boosters have no stored feature_names and no dataframe columns were provided."
         )
 
     def discover_splits(self) -> Dict[str, Tuple[Path, Path]]:
@@ -197,7 +199,24 @@ class ModelStateManager:
         return pd.to_numeric(s, errors="coerce").fillna(0).astype(int).to_numpy(dtype=np.int32)
 
     @staticmethod
-    def _prepare_model_features(X_df: pd.DataFrame, final_features: List[str]) -> pd.DataFrame:
+    def _get_categorical_features(boosters: List[xgb.Booster]) -> set[str]:
+        """Collect feature names marked as categorical ('c') in any loaded booster."""
+        cat_features: set[str] = set()
+        for booster in boosters:
+            names = booster.feature_names
+            types = booster.feature_types
+            if names and types and len(names) == len(types):
+                for name, ftype in zip(names, types):
+                    if ftype == "c":
+                        cat_features.add(str(name))
+        return cat_features
+
+    @staticmethod
+    def _prepare_model_features(
+        X_df: pd.DataFrame,
+        final_features: List[str],
+        categorical_features: Optional[set[str]] = None,
+    ) -> pd.DataFrame:
         missing = [f for f in final_features if f not in X_df.columns]
         if missing:
             raise KeyError(
@@ -205,9 +224,28 @@ class ModelStateManager:
             )
         X_sub = X_df[final_features].copy()
         for col in X_sub.columns:
-            dt = X_sub[col].dtype
+            s = X_sub[col]
+            dt = s.dtype
+            if isinstance(dt, pd.CategoricalDtype):
+                continue
             if dt == object or isinstance(dt, pd.StringDtype):
-                X_sub[col] = X_sub[col].astype("category")
+                X_sub[col] = s.astype("category")
+            elif categorical_features and col in categorical_features:
+                # Polars write_parquet flattens integer pd.Categorical columns to int64/float64;
+                # restore them as integer-indexed CategoricalDtype so XGBoost uses categorical splits.
+                if pd.api.types.is_numeric_dtype(dt) and not pd.api.types.is_bool_dtype(dt):
+                    non_null = s.dropna()
+                    if pd.api.types.is_integer_dtype(dt) or (
+                        len(non_null) > 0 and np.all(np.isfinite(non_null) & (non_null == np.floor(non_null)))
+                    ):
+                        cats = pd.Index(np.unique(non_null.to_numpy(dtype=np.int64)), dtype="int64")
+                        X_sub[col] = pd.Categorical(s, categories=cats)
+                    elif len(non_null) == 0:
+                        X_sub[col] = pd.Categorical(s, categories=pd.Index([], dtype="int64"))
+                    else:
+                        X_sub[col] = s.astype("category")
+                else:
+                    X_sub[col] = s.astype("category")
         return X_sub
 
     def get_split_data(self, split: Optional[str] = None) -> Dict[str, Any]:
@@ -229,8 +267,7 @@ class ModelStateManager:
             return self.split_cache[split]
 
         x_path, y_path = available[split]
-        booster = self._load_booster()
-        final_features = self._load_ranked_features()
+        boosters = self._load_boosters()
 
         X_df = pd.read_parquet(x_path)
         y_df = pd.read_parquet(y_path)
@@ -241,15 +278,29 @@ class ModelStateManager:
                 f"Length mismatch between {x_path.name} ({len(X_df)}) and {y_path.name} ({len(y_true)})"
             )
 
-        X_model = self._prepare_model_features(X_df, final_features)
+        final_features = self._load_model_features(X_df)
+        categorical_features = self._get_categorical_features(boosters)
+        X_model = self._prepare_model_features(X_df, final_features, categorical_features)
         dmatrix = xgb.DMatrix(X_model, label=y_true, enable_categorical=True)
-        raw_preds = np.asarray(booster.predict(dmatrix), dtype=np.float64)
 
-        # Ensure probabilities are in [0, 1] in case raw margins were output
-        if np.any(raw_preds < 0.0) or np.any(raw_preds > 1.0):
-            y_pred = 1.0 / (1.0 + np.exp(-raw_preds))
-        else:
-            y_pred = raw_preds
+        per_model_preds: List[np.ndarray] = []
+        for booster in boosters:
+            if booster.feature_names and list(booster.feature_names) != final_features:
+                X_b = self._prepare_model_features(X_df, list(booster.feature_names), categorical_features)
+                dm_b = xgb.DMatrix(X_b, label=y_true, enable_categorical=True)
+                raw_preds = np.asarray(booster.predict(dm_b), dtype=np.float64)
+            else:
+                raw_preds = np.asarray(booster.predict(dmatrix), dtype=np.float64)
+
+            # Ensure probabilities are in [0, 1] in case raw margins were output
+            if np.any(raw_preds < 0.0) or np.any(raw_preds > 1.0):
+                model_prob = 1.0 / (1.0 + np.exp(-raw_preds))
+            else:
+                model_prob = raw_preds
+            per_model_preds.append(model_prob)
+
+        model_preds_matrix = np.vstack(per_model_preds)
+        y_pred = np.mean(model_preds_matrix, axis=0)
 
         threshold_min = float(np.min(y_pred))
         threshold_max = float(np.max(y_pred))
@@ -321,6 +372,8 @@ class ModelStateManager:
             "y_true": y_true,
             "y_pred": y_pred,
             "y_pred_norm": y_pred_norm,
+            "model_preds": model_preds_matrix,
+            "n_models": len(boosters),
             "n_samples": total_samples,
             "n_positives": total_pos,
             "n_negatives": total_neg,
@@ -359,7 +412,7 @@ async def api_state(request: Request) -> JSONResponse:
     try:
         available = state_manager.discover_splits()
         split_data = state_manager.get_split_data(requested_split)
-        final_features = state_manager._load_ranked_features()
+        final_features = state_manager._load_model_features(split_data["X_df"])
 
         splits_info = []
         label_map = {
@@ -383,7 +436,9 @@ async def api_state(request: Request) -> JSONResponse:
             {
                 "status": "ok",
                 "target_label": TARGET_LABEL,
-                "model_path": state_manager.model_path_used,
+                "n_models": split_data["n_models"],
+                "model_paths": state_manager.model_paths_used,
+                "model_path": ", ".join(Path(p).name for p in state_manager.model_paths_used),
                 "available_splits": splits_info,
                 "current_split": split_data["split"],
                 "x_file": split_data["x_file"],
@@ -439,13 +494,7 @@ async def api_sample(request: Request) -> JSONResponse:
         split_data = state_manager.get_split_data(requested_split)
         n_samples = split_data["n_samples"]
         X_df: pd.DataFrame = split_data["X_df"]
-        final_features = state_manager._load_ranked_features()
-        final_feature_set = set(final_features)
-        ranked_order = [f for f in state_manager.ranked_features if f in final_feature_set]
-        for feat in final_features:
-            if feat not in ranked_order:
-                ranked_order.append(feat)
-        rank_lookup = {feat: idx + 1 for idx, feat in enumerate(ranked_order)}
+        final_features = state_manager._load_model_features(X_df)
 
         if row_index_param is not None and row_index_param != "":
             row_idx = int(row_index_param)
@@ -480,10 +529,10 @@ async def api_sample(request: Request) -> JSONResponse:
         row_series = X_df.iloc[row_idx]
         orig_index = X_df.index[row_idx]
 
-        # Build pivoted rows: ranked model features first (in rank order), followed by any additional columns
+        # Build pivoted rows: model features first, followed by any additional columns
         pivoted_rows = []
         seen_cols = set()
-        for feat in ranked_order:
+        for feat in final_features:
             if feat in X_df.columns:
                 seen_cols.add(feat)
                 pivoted_rows.append(
@@ -491,7 +540,6 @@ async def api_sample(request: Request) -> JSONResponse:
                         "feature": feat,
                         "value": _format_cell_value(row_series[feat]),
                         "is_model_feature": True,
-                        "rank": rank_lookup[feat],
                     }
                 )
 
@@ -502,13 +550,13 @@ async def api_sample(request: Request) -> JSONResponse:
                         "feature": str(col),
                         "value": _format_cell_value(row_series[col]),
                         "is_model_feature": False,
-                        "rank": None,
                     }
                 )
 
         true_label = int(split_data["y_true"][row_idx])
         prob_raw = float(split_data["y_pred"][row_idx])
         prob_norm = float(split_data["y_pred_norm"][row_idx])
+        model_probs = [round(float(p), 6) for p in split_data["model_preds"][:, row_idx]]
 
         return JSONResponse(
             {
@@ -518,6 +566,8 @@ async def api_sample(request: Request) -> JSONResponse:
                 "sample_id": str(orig_index),
                 "prob_raw": prob_raw,
                 "prob_norm": prob_norm,
+                "n_models": split_data["n_models"],
+                "model_probs": model_probs,
                 "true_label": true_label,
                 "true_label_text": "Resistant organism" if true_label == 1 else "Non-resistant organism",
                 "pivoted_rows": pivoted_rows,
@@ -550,14 +600,36 @@ async def api_shap(request: Request) -> JSONResponse:
                 status_code=400,
             )
 
-        booster = state_manager._load_booster()
-        final_features = state_manager._load_ranked_features()
+        boosters = state_manager._load_boosters()
+        final_features = state_manager._load_model_features(split_data["X_df"])
         X_model_row = split_data["X_model"].iloc[[row_idx]]
 
         drow = xgb.DMatrix(X_model_row, enable_categorical=True)
-        contribs = booster.predict(drow, pred_contribs=True)[0]
-        shap_vals = np.asarray(contribs[:-1], dtype=np.float64)
-        base_val = float(contribs[-1])
+        feature_idx_map = {feat: i for i, feat in enumerate(final_features)}
+        shap_vals_sum = np.zeros(len(final_features), dtype=np.float64)
+        base_val_sum = 0.0
+
+        categorical_features = state_manager._get_categorical_features(boosters)
+        for booster in boosters:
+            if booster.feature_names and list(booster.feature_names) != final_features:
+                b_feats = list(booster.feature_names)
+                X_b_row = state_manager._prepare_model_features(
+                    split_data["X_df"].iloc[[row_idx]], b_feats, categorical_features
+                )
+                drow_b = xgb.DMatrix(X_b_row, enable_categorical=True)
+                contribs = np.asarray(booster.predict(drow_b, pred_contribs=True)[0], dtype=np.float64)
+                for j, feat in enumerate(b_feats):
+                    if feat in feature_idx_map:
+                        shap_vals_sum[feature_idx_map[feat]] += contribs[j]
+                base_val_sum += float(contribs[-1])
+            else:
+                contribs = np.asarray(booster.predict(drow, pred_contribs=True)[0], dtype=np.float64)
+                shap_vals_sum += contribs[:-1]
+                base_val_sum += float(contribs[-1])
+
+        n_models = len(boosters)
+        shap_vals = shap_vals_sum / n_models
+        base_val = base_val_sum / n_models
 
         raw_row = X_model_row.iloc[0]
         display_data = np.array(
@@ -572,13 +644,14 @@ async def api_shap(request: Request) -> JSONResponse:
             feature_names=final_features,
         )
 
+        n_display = min(MAX_SHAP_DISPLAY, len(final_features))
         plt.close("all")
-        fig_height = max(6.5, len(final_features) * 0.35 + 1.5)
+        fig_height = max(6.5, n_display * 0.35 + 1.5)
         fig = plt.figure(figsize=(10, fig_height), dpi=160)
-        shap.plots.waterfall(explanation, max_display=len(final_features), show=False)
+        shap.plots.waterfall(explanation, max_display=MAX_SHAP_DISPLAY, show=False)
         fig = plt.gcf()
         fig.suptitle(
-            f"Shapley Waterfall — Sample #{row_idx} ({split_data['split'].upper()} set)",
+            f"Ensemble Shapley Waterfall ({n_models} models) — Sample #{row_idx} ({split_data['split'].upper()} set)",
             fontsize=12,
             fontweight="bold",
             y=1.02,
@@ -606,6 +679,7 @@ async def api_shap(request: Request) -> JSONResponse:
                 "status": "ok",
                 "row_index": row_idx,
                 "split": split_data["split"],
+                "n_models": n_models,
                 "base_value": round(base_val, 5),
                 "fx_value": round(float(base_val + np.sum(shap_vals)), 5),
                 "image_data_url": f"data:image/png;base64,{b64_png}",

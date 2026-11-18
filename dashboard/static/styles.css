@@ -868,9 +868,8 @@ input[type="range"]:focus-visible {
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.86rem;
-  --label-1: "Rank";
-  --label-2: "Feature / Column";
-  --label-3: "Value";
+  --label-1: "Feature / Column";
+  --label-2: "Value";
 }
 
 .pivoted-table thead {
@@ -911,22 +910,6 @@ input[type="range"]:focus-visible {
 .pivoted-table tbody tr:hover th,
 .pivoted-table tbody tr:hover td {
   background: #eff6ff;
-}
-
-.col-rank {
-  inline-size: 68px;
-  text-align: center;
-}
-
-.rank-pill {
-  display: inline-block;
-  background: #e0e7ff;
-  color: #3730a3;
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 0.12rem 0.42rem;
-  border-radius: 999px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .col-feature {
@@ -976,14 +959,8 @@ input[type="range"]:focus-visible {
     background: #f1f5f9;
   }
 
-  .pivoted-table td.col-rank::before {
-    content: var(--label-1) ": ";
-    font-weight: 600;
-    color: var(--text-secondary);
-  }
-
   .pivoted-table td.col-value::before {
-    content: var(--label-3) ": ";
+    content: var(--label-2) ": ";
     font-weight: 600;
     color: var(--text-secondary);
   }

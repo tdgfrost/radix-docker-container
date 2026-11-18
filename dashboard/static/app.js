@@ -21,6 +21,7 @@
   // DOM Elements
   const el = {
     splitSelect: document.getElementById("split-select"),
+    metaModels: document.getElementById("meta-models"),
     metaRows: document.getElementById("meta-rows"),
     metaPrevalence: document.getElementById("meta-prevalence"),
     metaFeatures: document.getElementById("meta-features"),
@@ -275,7 +276,8 @@
     if (!sample) {
       el.predictionBox.className = "prediction-box prediction-neutral";
       el.predictionStatusText.textContent = "No sample selected";
-      el.predictionScoresText.textContent = "Normalised score: — | Raw probability: —";
+      el.predictionScoresText.textContent = "Normalised score: — | Mean probability: —";
+      el.predictionScoresText.removeAttribute("title");
       el.sampleScoreMarker.classList.add("hidden");
       return;
     }
@@ -297,7 +299,14 @@
     }
 
     el.predictionScoresText.textContent =
-      `Sample Norm Score: ${sample.prob_norm.toFixed(4)} | Raw Prob: ${sample.prob_raw.toFixed(4)}`;
+      `Sample Norm Score: ${sample.prob_norm.toFixed(4)} | Mean Prob: ${sample.prob_raw.toFixed(4)}`;
+    if (Array.isArray(sample.model_probs) && sample.model_probs.length > 0) {
+      el.predictionScoresText.title = `Individual model probabilities: ${sample.model_probs
+        .map((p, idx) => `M${idx}: ${p.toFixed(4)}`)
+        .join(", ")}`;
+    } else {
+      el.predictionScoresText.removeAttribute("title");
+    }
   }
 
   function resetRevealBox() {
@@ -334,7 +343,7 @@
   function renderEmptyTableRow(message) {
     const tr = document.createElement("tr");
     const td = document.createElement("td");
-    td.colSpan = 3;
+    td.colSpan = 2;
     td.className = "empty-table-msg";
     td.textContent = message;
     tr.appendChild(td);
@@ -371,19 +380,6 @@
     for (const item of filtered) {
       const tr = document.createElement("tr");
 
-      const tdRank = document.createElement("td");
-      tdRank.className = "col-rank";
-      const rankSpan = document.createElement("span");
-      if (item.rank) {
-        rankSpan.className = "rank-pill";
-        rankSpan.textContent = `#${item.rank}`;
-      } else {
-        rankSpan.style.color = "#64748b";
-        rankSpan.style.fontSize = "0.75rem";
-        rankSpan.textContent = "—";
-      }
-      tdRank.appendChild(rankSpan);
-
       const thFeature = document.createElement("th");
       thFeature.scope = "row";
       thFeature.className = "col-feature";
@@ -393,7 +389,7 @@
       tdValue.className = "col-value";
       tdValue.textContent = String(item.value);
 
-      tr.append(tdRank, thFeature, tdValue);
+      tr.append(thFeature, tdValue);
       fragment.appendChild(tr);
     }
 
@@ -516,7 +512,7 @@
 
     let progress = 8;
     setShapProgress(progress);
-    el.shapLoadingText.textContent = `Computing TreeSHAP contributions & waterfall plot for Row #${sample.row_index}…`;
+    el.shapLoadingText.textContent = `Computing ensemble TreeSHAP contributions & waterfall plot for Row #${sample.row_index}…`;
 
     const progressTimer = setInterval(() => {
       if (progress < 90) {
@@ -592,12 +588,13 @@
       }
 
       // Header pills
+      el.metaModels.textContent = `Ensemble: ${data.n_models} model${data.n_models === 1 ? "" : "s"}`;
       el.metaRows.textContent = `${data.n_samples.toLocaleString()} samples (${data.x_file})`;
       el.metaPrevalence.textContent = `Resistant: ${data.n_positives.toLocaleString()} (${(data.prevalence * 100).toFixed(1)}%)`;
       el.metaFeatures.textContent = `${data.n_features_model} model features / ${data.n_features_total} total cols`;
       const modelScopeOpt = el.featureScopeSelect.querySelector('option[value="model"]');
       if (modelScopeOpt) {
-        modelScopeOpt.textContent = `Model Features (Top ${data.n_features_model})`;
+        modelScopeOpt.textContent = `Model Features (${data.n_features_model})`;
       }
       el.rowIndexInput.max = String(Math.max(0, data.n_samples - 1));
 
